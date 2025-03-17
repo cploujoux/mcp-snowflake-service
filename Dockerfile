@@ -33,8 +33,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
-# Set the environment variable for the Discord bot token
-ENV DISCORD_TOKEN=your_bot_token
-# when running the container, add --db-path and a bind mount to the host's db file
 
 ENTRYPOINT ["npx","-y","@blaxel/supergateway","--port","80","--stdio"]
