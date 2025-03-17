@@ -1,16 +1,16 @@
 #!/usr/bin/env python
-import os
 import asyncio
-import logging
 import json
+import logging
+import os
 import time
+from typing import Any, Optional
+
+import mcp.server.stdio
 import snowflake.connector
 from dotenv import load_dotenv
-import mcp.server.stdio
 from mcp.server import Server
-from mcp.types import Tool, ServerResult, TextContent
-from contextlib import closing
-from typing import Optional, Any
+from mcp.types import TextContent, Tool
 
 # 配置日志 / Configure logging
 logging.basicConfig(
@@ -34,10 +34,11 @@ class SnowflakeConnection:
             "account": os.getenv("SNOWFLAKE_ACCOUNT"),
             "database": os.getenv("SNOWFLAKE_DATABASE"),
             "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
+            "schema": os.getenv("SNOWFLAKE_SCHEMA"),
         }
         self.conn: Optional[snowflake.connector.SnowflakeConnection] = None
         logger.info(f"Initialized with config (excluding password): {json.dumps({k:v for k,v in self.config.items() if k != 'password'})}")
-    
+
     def ensure_connection(self) -> snowflake.connector.SnowflakeConnection:
         """
         确保数据库连接可用，如果连接不存在或已断开则重新建立连接
@@ -55,7 +56,7 @@ class SnowflakeConnection:
                 )
                 self.conn.cursor().execute("ALTER SESSION SET TIMEZONE = 'UTC'")
                 logger.info("New connection established and configured")
-            
+
             # 测试连接是否有效 / Test if connection is valid
             try:
                 self.conn.cursor().execute("SELECT 1")
@@ -63,7 +64,7 @@ class SnowflakeConnection:
                 logger.info("Connection lost, reconnecting...")
                 self.conn = None
                 return self.ensure_connection()
-                
+
             return self.conn
         except Exception as e:
             logger.error(f"Connection error: {str(e)}")
@@ -73,16 +74,16 @@ class SnowflakeConnection:
         """
         执行SQL查询并返回结果
         Execute SQL query and return results
-        
+
         Args:
             query (str): SQL查询语句 / SQL query statement
-            
+
         Returns:
             list[dict[str, Any]]: 查询结果列表 / List of query results
         """
         start_time = time.time()
         logger.info(f"Executing query: {query[:200]}...")  # 只记录前200个字符 / Log only first 200 characters
-        
+
         try:
             conn = self.ensure_connection()
             with conn.cursor() as cursor:
@@ -107,7 +108,7 @@ class SnowflakeConnection:
                         logger.info(f"Read query returned {len(results)} rows in {time.time() - start_time:.2f}s")
                         return results
                     return []
-                
+
         except snowflake.connector.errors.ProgrammingError as e:
             logger.error(f"SQL Error: {str(e)}")
             logger.error(f"Error Code: {getattr(e, 'errno', 'unknown')}")
@@ -169,11 +170,11 @@ class SnowflakeServer(Server):
             """
             处理工具调用请求
             Handle tool call requests
-            
+
             Args:
                 name (str): 工具名称 / Tool name
                 arguments (dict): 工具参数 / Tool arguments
-                
+
             Returns:
                 list[TextContent]: 执行结果 / Execution results
             """
@@ -182,7 +183,7 @@ class SnowflakeServer(Server):
                 try:
                     result = self.db.execute_query(arguments["query"])
                     execution_time = time.time() - start_time
-                    
+
                     return [TextContent(
                         type="text",
                         text=f"Results (execution time: {execution_time:.2f}s):\n{result}"
@@ -212,7 +213,7 @@ async def main():
         server = SnowflakeServer()
         initialization_options = server.create_initialization_options()
         logger.info("Starting server")
-        
+
         async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
             await server.run(
                 read_stream,
